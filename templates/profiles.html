@@ -3,8 +3,14 @@
 {% block content %}
 <div class="row">
     <div class="col-md-12">
-        <h1>{{ database.name }} Profiles</h1>
-        <p>Manage profiles for {{ database.name }} database</p>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>{{ database.name }} Profiles</h1>
+            <form method="POST" action="{{ url_for('scrape_profiles', slug=database.slug) }}">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-sync-alt"></i> Scrape Now
+                </button>
+            </form>
+        </div>
         
         <!-- Add new profile form -->
         <div class="card mb-4">
@@ -26,25 +32,18 @@
             </div>
         </div>
 
-        <!-- Database Stats and Actions -->
+        <!-- Database Stats -->
         <div class="card mb-4">
             <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-3">
+                <div class="row">
+                    <div class="col-md-4">
                         <h5>Total Profiles: {{ profiles|length if profiles else 0 }}</h5>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <h5>Active Profiles: {{ active_profiles if active_profiles else 0 }}</h5>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <h5>Total Records: {{ total_records if total_records else 0 }}</h5>
-                    </div>
-                    <div class="col-md-3 text-end">
-                        <form method="POST" action="{{ url_for('scrape_profiles', slug=database.slug) }}" style="display: inline;">
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-sync"></i> Scrape Now
-                            </button>
-                        </form>
                     </div>
                 </div>
             </div>
