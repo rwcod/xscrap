@@ -1,22 +1,51 @@
+from dataclasses import dataclass
+from typing import List
 from dotenv import load_dotenv
 import os
+import logging
 
+@dataclass
 class Config:
-    def __init__(self, dev_mode=False, log_level='INFO', target_keyword='BTC', **kwargs):
-        self.dev_mode = dev_mode
-        self.headless = not dev_mode  # Dev mode → visible
-        self.log_level = 'DEBUG' if dev_mode else log_level
-        self.timeout = kwargs.get('timeout', 30000)
-        self.max_concurrent = kwargs.get('max_concurrent', 5)
-        self.target_keyword = target_keyword
-
+    """Configuration for X scraper"""
+    
+    # MongoDB settings
+    mongodb_uri: str
+    
+    # Scraping settings
+    posts_limit: int = 30
+    headless: bool = True
+    
+    # Browser settings
+    timeout: int = 45000  # milliseconds
+    base_url: str = "https://twitter.com"
+    login_url: str = "https://twitter.com/login"
+    cookies_path: str = "auth.json"
+    
+    # Logging
+    log_level: str = 'INFO'
+    
     @classmethod
-    def from_env_file(cls, env_path='.env'):
+    def from_env(cls, env_path: str = '.env') -> 'Config':
+        """Create configuration from environment variables"""
         load_dotenv(env_path)
+        
+        # Get required MongoDB URI
+        mongodb_uri = os.getenv('MONGODB_URI')
+        if not mongodb_uri:
+            raise ValueError("MONGODB_URI environment variable is required")
+            
         return cls(
-            dev_mode=os.getenv('DEV_MODE', 'False') == 'True',
-            log_level=os.getenv('LOG_LEVEL', 'INFO'),
-            timeout=int(os.getenv('TIMEOUT', '30000')),
-            max_concurrent=int(os.getenv('MAX_CONCURRENT', '5')),
-            target_keyword=os.getenv('TARGET_KEYWORD', 'BTC')
-        ) 
+            mongodb_uri=mongodb_uri,
+            posts_limit=int(os.getenv('POSTS_LIMIT', '30')),
+            headless=os.getenv('HEADLESS', 'true').lower() == 'true',
+            timeout=int(os.getenv('TIMEOUT', '45000')),
+            log_level=os.getenv('LOG_LEVEL', 'INFO')
+        )
+        
+    def setup_logging(self):
+        """Configure logging"""
+        logging.basicConfig(
+            level=getattr(logging, self.log_level),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            filename='xscraper.log'
+        )

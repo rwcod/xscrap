@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1>Game Databases</h1>
+        
+        <!-- Add new database form -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Add New Game Database</h5>
+                <form method="POST" action="{{ url_for('databases') }}">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <input type="text" name="name" class="form-control" placeholder="Enter game name (e.g., Counter Strike 2)" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="slug" class="form-control" placeholder="Enter slug (e.g., cs2)" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary">Add Database</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Existing databases -->
+        <div class="row">
+            {% for db in databases %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ db.name }}</h5>
+                        <p class="card-text">
+                            <strong>Profiles:</strong> {{ db.profile_count }}<br>
+                            <strong>Total Records:</strong> {{ db.record_count }}<br>
+                            <strong>Last Updated:</strong> {{ db.last_updated.strftime('%Y-%m-%d %H:%M:%S') if db.last_updated else 'Never' }}
+                        </p>
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('view_database', slug=db.slug) }}" class="btn btn-primary">View Profiles</a>
+                            <form method="POST" action="{{ url_for('databases') }}?action=delete&slug={{ db.slug }}" style="display: inline;">
+                                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure? This will delete all profiles and data for this database.')">
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

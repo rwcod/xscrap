@@ -1,8 +1,0 @@
-2025-01-29 19:58:54,439 - main - DEBUG - Debug mode enabled
-2025-01-29 19:58:55,182 - auth - DEBUG - Checking authentication status
-2025-01-29 20:03:47,307 - main - DEBUG - Debug mode enabled
-2025-01-29 20:03:47,425 - auth - DEBUG - Launching browser (dev=True, headless=False)
-2025-01-29 20:03:48,062 - auth - DEBUG - Checking authentication status
-2025-01-29 20:15:29,603 - main - DEBUG - Debug mode enabled
-2025-01-29 20:15:29,720 - auth - DEBUG - Launching browser (dev=True, headless=False)
-2025-01-29 20:15:30,374 - auth - DEBUG - Checking authentication status

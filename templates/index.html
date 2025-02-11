@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1>XScraper Dashboard</h1>
+        
+        <!-- Quick Actions -->
+        <div class="mb-4">
+            <a href="{{ url_for('databases') }}" class="btn btn-primary">Manage Game Databases</a>
+        </div>
+
+        <!-- Database Overview -->
+        <h2>Database Overview</h2>
+        <div class="row">
+            {% for db in databases %}
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ db.name }}</h5>
+                        <div class="card-text">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Profiles:</span>
+                                <strong>{{ db.profile_count }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Total Records:</span>
+                                <strong>{{ db.record_count }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Last Updated:</span>
+                                <strong>{{ db.last_updated.strftime('%Y-%m-%d %H:%M:%S') if db.last_updated else 'Never' }}</strong>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('view_database', slug=db.slug) }}" class="btn btn-primary">View Profiles</a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+                <div class="alert alert-info">
+                    No game databases found. <a href="{{ url_for('databases') }}">Create your first database</a> to get started.
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

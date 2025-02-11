@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: xscraper-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - xscraper-network
+
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: xscraper-web
+    command: python web_app.py
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/xscraper
+      - SECRET_KEY=your-secret-key-here
+      - PYTHONUNBUFFERED=1
+      - FLASK_DEBUG=1
+    networks:
+      - xscraper-network
+    restart: always
+
+  scraper:
+    build: .
+    container_name: xscraper-app
+    command: python scraper_job.py
+    depends_on:
+      - mongodb
+    volumes:
+      - ./logs:/app/logs
+      - ./auth:/app/auth
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/xscraper
+      - POSTS_LIMIT=30
+      - LOG_LEVEL=INFO
+      - HEADLESS=true
+    networks:
+      - xscraper-network
+    restart: on-failure
+
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: xscraper-scheduler
+    depends_on:
+      - scraper
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config:/etc/ofelia:ro
+    networks:
+      - xscraper-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  xscraper-network:
+    driver: bridge
