@@ -1,0 +1,7 @@
+Metadata-Version: 2.2
+Name: xscraper
+Version: 0.1
+Requires-Dist: playwright
+Requires-Dist: python-dotenv
+Requires-Dist: tqdm
+Dynamic: requires-dist

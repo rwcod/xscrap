@@ -1,0 +1,6 @@
+setup.py
+xscraper.egg-info/PKG-INFO
+xscraper.egg-info/SOURCES.txt
+xscraper.egg-info/dependency_links.txt
+xscraper.egg-info/requires.txt
+xscraper.egg-info/top_level.txt
