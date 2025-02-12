@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # Copy the rest of the application
 COPY . .
 
+# Create directory for exports
+RUN mkdir -p /app/exports && chmod 777 /app/exports
+
 # Expose port
 EXPOSE 5000
 

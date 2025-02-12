@@ -10,6 +10,12 @@ services:
       - mongodb_data:/data/db
     networks:
       - xscraper-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   web:
     build: 
@@ -20,7 +26,8 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/xscraper
       - SECRET_KEY=your-secret-key-here
@@ -35,7 +42,8 @@ services:
     container_name: xscraper-app
     command: python scraper_job.py
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
       - ./auth:/app/auth

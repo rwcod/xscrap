@@ -78,13 +78,16 @@
                         <td>{{ profile.last_scraped.strftime('%Y-%m-%d %H:%M:%S') if profile.last_scraped else 'Never' }}</td>
                         <td>{{ profile.record_count if profile.record_count else 0 }}</td>
                         <td>
-                            <form method="POST" action="{{ url_for('toggle_profile', slug=database.slug, profile_id=profile._id) }}" style="display: inline;">
+                            <form method="POST" action="{{ url_for('toggle_profile', slug=database.slug, profile_id=profile._id) }}" class="d-inline">
                                 <button type="submit" class="btn btn-sm {% if profile.active %}btn-warning{% else %}btn-success{% endif %}">
                                     <i class="fas {% if profile.active %}fa-pause{% else %}fa-play{% endif %}"></i>
                                     {{ "Deactivate" if profile.active else "Activate" }}
                                 </button>
                             </form>
-                            <form method="POST" action="{{ url_for('delete_profile', slug=database.slug, profile_id=profile._id) }}" style="display: inline;">
+                            <a href="{{ url_for('view_profile_records', slug=database.slug, profile_id=profile._id) }}" class="btn btn-sm btn-info">
+                                <i class="fas fa-list"></i> View Posts
+                            </a>
+                            <form method="POST" action="{{ url_for('delete_profile', slug=database.slug, profile_id=profile._id) }}" class="d-inline">
                                 <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this profile?')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>

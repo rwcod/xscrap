@@ -33,66 +33,6 @@ except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
     raise
 
-async def scrape_profile_data(url, database_id, profile_id):
-    """Scrape profile data and store in database"""
-    try:
-        # Initialize scraper
-        scraper = XScraper(headless=True)
-        await scraper.init_browser()
-        
-        try:
-            # Scrape posts
-            posts = await scraper.scrape_profile(url, max_posts=30)
-            logger.info(f"Scraped {len(posts)} posts from {url}")
-            
-            if posts:
-                # Store each post
-                for post in posts:
-                    # Add metadata
-                    post['database_id'] = database_id
-                    post['profile_id'] = profile_id
-                    post['profile_url'] = url
-                    post['last_updated'] = datetime.utcnow()
-                    
-                    # Update or insert post
-                    mongo.db.scraped_data.update_one(
-                        {
-                            'database_id': database_id,
-                            'profile_id': profile_id,
-                            'id': post['id']
-                        },
-                        {'$set': post},
-                        upsert=True
-                    )
-                
-                # Update profile's last scraped time
-                mongo.db.profiles.update_one(
-                    {'_id': profile_id},
-                    {
-                        '$set': {
-                            'last_scraped': datetime.utcnow(),
-                            'last_scrape_count': len(posts)
-                        }
-                    }
-                )
-                
-                # Update database's last updated time
-                mongo.db.game_databases.update_one(
-                    {'_id': database_id},
-                    {'$set': {'last_updated': datetime.utcnow()}}
-                )
-                
-                return len(posts)
-            
-            return 0
-            
-        finally:
-            await scraper.close()
-            
-    except Exception as e:
-        logger.error(f"Error scraping {url}: {str(e)}")
-        return 0
-
 def init_db():
     """Initialize database collections and indexes"""
     try:
@@ -232,14 +172,43 @@ def view_database(slug):
             })
         
         return render_template('profiles.html',
-                             database=database,
-                             profiles=profiles,
-                             active_profiles=active_profiles,
-                             total_records=total_records)
+                           database=database,
+                           profiles=profiles,
+                           active_profiles=active_profiles,
+                           total_records=total_records)
     except Exception as e:
         logger.error(f"View database error: {str(e)}", exc_info=True)
         flash('An error occurred while loading the database', 'danger')
         return redirect(url_for('databases'))
+
+@app.route('/databases/<slug>/profiles/<profile_id>/records')
+def view_profile_records(slug, profile_id):
+    try:
+        database = mongo.db.game_databases.find_one({'slug': slug})
+        if not database:
+            flash('Database not found', 'danger')
+            return redirect(url_for('databases'))
+            
+        profile = mongo.db.profiles.find_one({'_id': ObjectId(profile_id)})
+        if not profile:
+            flash('Profile not found', 'danger')
+            return redirect(url_for('view_database', slug=slug))
+            
+        records = list(mongo.db.scraped_data.find({
+            'database_id': database['_id'],
+            'profile_id': ObjectId(profile_id)
+        }).sort('timestamp', -1))  # Sort by timestamp descending
+        
+        logger.info(f"Found {len(records)} records for profile {profile['url']}")
+        
+        return render_template('records.html',
+                           database=database,
+                           profile=profile,
+                           records=records)
+    except Exception as e:
+        logger.error(f"View records error: {str(e)}", exc_info=True)
+        flash('An error occurred while loading the records', 'danger')
+        return redirect(url_for('view_database', slug=slug))
 
 @app.route('/databases/<slug>/profiles/add', methods=['POST'])
 def add_profile(slug):
@@ -308,20 +277,74 @@ def scrape_profiles(slug):
             flash('No active profiles found', 'warning')
             return redirect(url_for('view_database', slug=slug))
         
-        total_scraped = 0
-        for profile in profiles:
-            # Run scraping in event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                posts_count = loop.run_until_complete(
-                    scrape_profile_data(profile['url'], database['_id'], profile['_id'])
-                )
-                total_scraped += posts_count
-            finally:
-                loop.close()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
-        flash(f'Successfully scraped {total_scraped} posts from {len(profiles)} profiles', 'success')
+        try:
+            # Initialize scraper
+            scraper = XScraper(headless=True)
+            loop.run_until_complete(scraper.init_browser())
+            
+            total_scraped = 0
+            
+            for profile in profiles:
+                try:
+                    # Scrape posts
+                    posts = loop.run_until_complete(scraper.scrape_profile(profile['url'], max_posts=30))
+                    logger.info(f"Scraped {len(posts)} posts from {profile['url']}")
+                    
+                    if posts:
+                        # Store each post
+                        for post in posts:
+                            # Add metadata
+                            post['database_id'] = database['_id']
+                            post['profile_id'] = profile['_id']
+                            post['profile_url'] = profile['url']
+                            post['last_updated'] = datetime.utcnow()
+                            
+                            # Convert timestamp string to datetime
+                            if 'timestamp' in post and isinstance(post['timestamp'], str):
+                                post['timestamp'] = datetime.fromisoformat(post['timestamp'].replace('Z', '+00:00'))
+                            
+                            # Update or insert post
+                            mongo.db.scraped_data.update_one(
+                                {
+                                    'database_id': database['_id'],
+                                    'profile_id': profile['_id'],
+                                    'id': post['id']
+                                },
+                                {'$set': post},
+                                upsert=True
+                            )
+                        
+                        total_scraped += len(posts)
+                        
+                        # Update profile's last scraped time
+                        mongo.db.profiles.update_one(
+                            {'_id': profile['_id']},
+                            {
+                                '$set': {
+                                    'last_scraped': datetime.utcnow(),
+                                    'last_scrape_count': len(posts)
+                                }
+                            }
+                        )
+                    
+                except Exception as e:
+                    logger.error(f"Error scraping profile {profile['url']}: {str(e)}")
+                    continue
+            
+            # Update database's last updated time
+            mongo.db.game_databases.update_one(
+                {'_id': database['_id']},
+                {'$set': {'last_updated': datetime.utcnow()}}
+            )
+            
+            flash(f'Successfully scraped {total_scraped} posts from {len(profiles)} profiles', 'success')
+            
+        finally:
+            loop.run_until_complete(scraper.close())
+            loop.close()
         
     except Exception as e:
         logger.error(f"Scrape profiles error: {str(e)}", exc_info=True)
@@ -354,15 +377,26 @@ def toggle_profile(slug, profile_id):
 @app.route('/databases/<slug>/profiles/<profile_id>/delete', methods=['POST'])
 def delete_profile(slug, profile_id):
     try:
+        database = mongo.db.game_databases.find_one({'slug': slug})
+        if not database:
+            flash('Database not found', 'danger')
+            return redirect(url_for('databases'))
+
         profile = mongo.db.profiles.find_one({'_id': ObjectId(profile_id)})
-        if profile:
-            # Delete profile's records first
-            mongo.db.scraped_data.delete_many({'profile_id': ObjectId(profile_id)})
-            # Then delete the profile
-            mongo.db.profiles.delete_one({'_id': ObjectId(profile_id)})
-            flash('Profile and its data deleted successfully', 'success')
-        else:
+        if not profile:
             flash('Profile not found', 'danger')
+            return redirect(url_for('view_database', slug=slug))
+
+        # Delete profile's scraped data
+        mongo.db.scraped_data.delete_many({
+            'database_id': database['_id'],
+            'profile_id': ObjectId(profile_id)
+        })
+
+        # Delete the profile
+        mongo.db.profiles.delete_one({'_id': ObjectId(profile_id)})
+
+        flash('Profile deleted successfully', 'success')
         return redirect(url_for('view_database', slug=slug))
     except Exception as e:
         logger.error(f"Delete profile error: {str(e)}", exc_info=True)
@@ -370,4 +404,4 @@ def delete_profile(slug, profile_id):
         return redirect(url_for('view_database', slug=slug))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
