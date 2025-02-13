@@ -33,6 +33,32 @@ except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {e}")
     raise
 
+def _parse_timestamp(timestamp_str: str) -> datetime:
+    """Safely parse ISO format timestamp string"""
+    try:
+        # Remove any existing timezone info and replace with UTC
+        clean_ts = timestamp_str.split('+')[0].rstrip('Z')
+        if not clean_ts.endswith('.'):  # Ensure we don't have a trailing dot
+            clean_ts = clean_ts.rstrip('.')
+        return datetime.fromisoformat(clean_ts + '+00:00')
+    except Exception as e:
+        logger.error(f"Error parsing timestamp {timestamp_str}: {e}")
+        return datetime.utcnow()
+
+def _process_post(post: dict, profile: dict, database_id: str) -> dict:
+    """Process a post before saving to database"""
+    processed = post.copy()
+    processed['database_id'] = database_id
+    processed['profile_id'] = profile['_id']
+    processed['profile_url'] = profile['url']
+    processed['last_updated'] = datetime.utcnow()
+    
+    # Convert timestamp string to datetime
+    if 'timestamp' in processed and isinstance(processed['timestamp'], str):
+        processed['timestamp'] = _parse_timestamp(processed['timestamp'])
+        
+    return processed
+
 def init_db():
     """Initialize database collections and indexes"""
     try:
@@ -69,6 +95,29 @@ def init_db():
 with app.app_context():
     init_db()
 
+async def _initialize_scraper(headless=True):
+    """Helper function to safely initialize scraper with proper error handling"""
+    scraper = None
+    try:
+        scraper = XScraper(headless=headless)
+        await scraper.init_browser()
+        return scraper
+    except Exception as e:
+        if scraper:
+            try:
+                await scraper.close()
+            except:
+                pass
+        raise
+
+async def _safe_scrape_profile(scraper, profile_url, max_posts=30):
+    """Helper function to safely scrape a profile and handle errors"""
+    try:
+        return await scraper.scrape_profile(profile_url, max_posts=max_posts)
+    except Exception as e:
+        logger.error(f"Error scraping profile {profile_url}: {str(e)}")
+        return []
+
 @app.route('/')
 def index():
     try:
@@ -89,6 +138,88 @@ def index():
         logger.error(f"Index error: {str(e)}", exc_info=True)
         flash('An error occurred while loading the dashboard', 'danger')
         return render_template('index.html', databases=[])
+
+@app.route('/scrape_all', methods=['POST'])
+def scrape_all():
+    """Scrape all active profiles across all databases"""
+    try:
+        total_profiles = 0
+        total_posts = 0
+        updated_dbs = set()
+        scraper = None
+        
+        # Get all active profiles across all databases
+        profiles = list(mongo.db.profiles.find({'active': True}))
+        
+        if not profiles:
+            flash('No active profiles found', 'warning')
+            return redirect(url_for('index'))
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Initialize scraper
+            scraper = loop.run_until_complete(_initialize_scraper(headless=True))
+            
+            for profile in profiles:
+                # Scrape posts
+                posts = loop.run_until_complete(_safe_scrape_profile(scraper, profile['url']))
+                logger.info(f"Scraped {len(posts)} posts from {profile['url']}")
+                
+                if posts:
+                    # Store each post
+                    for post in posts:
+                        processed_post = _process_post(post, profile, profile['database_id'])
+                        # Update or insert post
+                        mongo.db.scraped_data.update_one(
+                            {
+                                'database_id': profile['database_id'],
+                                'profile_id': profile['_id'],
+                                'id': processed_post['id']
+                            },
+                            {'$set': processed_post},
+                            upsert=True
+                        )
+                    
+                    total_posts += len(posts)
+                    total_profiles += 1
+                    updated_dbs.add(profile['database_id'])
+                    
+                    # Update profile's last scraped time
+                    mongo.db.profiles.update_one(
+                        {'_id': profile['_id']},
+                        {
+                            '$set': {
+                                'last_scraped': datetime.utcnow(),
+                                'last_scrape_count': len(posts)
+                            }
+                        }
+                    )
+            
+            # Update last_updated for all affected databases
+            now = datetime.utcnow()
+            for db_id in updated_dbs:
+                mongo.db.game_databases.update_one(
+                    {'_id': db_id},
+                    {'$set': {'last_updated': now}}
+                )
+            
+            flash(f'Successfully scraped {total_posts} posts from {total_profiles} profiles across {len(updated_dbs)} databases', 'success')
+            
+        finally:
+            if scraper:
+                try:
+                    loop.run_until_complete(scraper.close())
+                except:
+                    pass
+            loop.close()
+        
+    except Exception as e:
+        logger.error(f"Scrape all error: {str(e)}", exc_info=True)
+        flash('An error occurred while scraping profiles', 'danger')
+    
+    return redirect(url_for('index'))
 
 @app.route('/databases', methods=['GET', 'POST'])
 def databases():
@@ -282,57 +413,41 @@ def scrape_profiles(slug):
         
         try:
             # Initialize scraper
-            scraper = XScraper(headless=True)
-            loop.run_until_complete(scraper.init_browser())
-            
+            scraper = loop.run_until_complete(_initialize_scraper(headless=True))
             total_scraped = 0
             
             for profile in profiles:
-                try:
-                    # Scrape posts
-                    posts = loop.run_until_complete(scraper.scrape_profile(profile['url'], max_posts=30))
-                    logger.info(f"Scraped {len(posts)} posts from {profile['url']}")
-                    
-                    if posts:
-                        # Store each post
-                        for post in posts:
-                            # Add metadata
-                            post['database_id'] = database['_id']
-                            post['profile_id'] = profile['_id']
-                            post['profile_url'] = profile['url']
-                            post['last_updated'] = datetime.utcnow()
-                            
-                            # Convert timestamp string to datetime
-                            if 'timestamp' in post and isinstance(post['timestamp'], str):
-                                post['timestamp'] = datetime.fromisoformat(post['timestamp'].replace('Z', '+00:00'))
-                            
-                            # Update or insert post
-                            mongo.db.scraped_data.update_one(
-                                {
-                                    'database_id': database['_id'],
-                                    'profile_id': profile['_id'],
-                                    'id': post['id']
-                                },
-                                {'$set': post},
-                                upsert=True
-                            )
-                        
-                        total_scraped += len(posts)
-                        
-                        # Update profile's last scraped time
-                        mongo.db.profiles.update_one(
-                            {'_id': profile['_id']},
+                # Scrape posts
+                posts = loop.run_until_complete(_safe_scrape_profile(scraper, profile['url']))
+                logger.info(f"Scraped {len(posts)} posts from {profile['url']}")
+                
+                if posts:
+                    # Store each post
+                    for post in posts:
+                        processed_post = _process_post(post, profile, database['_id'])
+                        # Update or insert post
+                        mongo.db.scraped_data.update_one(
                             {
-                                '$set': {
-                                    'last_scraped': datetime.utcnow(),
-                                    'last_scrape_count': len(posts)
-                                }
-                            }
+                                'database_id': database['_id'],
+                                'profile_id': profile['_id'],
+                                'id': processed_post['id']
+                            },
+                            {'$set': processed_post},
+                            upsert=True
                         )
                     
-                except Exception as e:
-                    logger.error(f"Error scraping profile {profile['url']}: {str(e)}")
-                    continue
+                    total_scraped += len(posts)
+                    
+                    # Update profile's last scraped time
+                    mongo.db.profiles.update_one(
+                        {'_id': profile['_id']},
+                        {
+                            '$set': {
+                                'last_scraped': datetime.utcnow(),
+                                'last_scrape_count': len(posts)
+                            }
+                        }
+                    )
             
             # Update database's last updated time
             mongo.db.game_databases.update_one(
@@ -343,7 +458,11 @@ def scrape_profiles(slug):
             flash(f'Successfully scraped {total_scraped} posts from {len(profiles)} profiles', 'success')
             
         finally:
-            loop.run_until_complete(scraper.close())
+            if scraper:
+                try:
+                    loop.run_until_complete(scraper.close())
+                except:
+                    pass
             loop.close()
         
     except Exception as e:

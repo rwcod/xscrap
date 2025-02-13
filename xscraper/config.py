@@ -20,6 +20,8 @@ class Config:
     base_url: str = "https://twitter.com"
     login_url: str = "https://twitter.com/login"
     cookies_path: str = "auth.json"
+    viewport_width: int = 1280
+    viewport_height: int = 720
     
     # Logging
     log_level: str = 'INFO'
@@ -39,6 +41,8 @@ class Config:
             posts_limit=int(os.getenv('POSTS_LIMIT', '30')),
             headless=os.getenv('HEADLESS', 'true').lower() == 'true',
             timeout=int(os.getenv('TIMEOUT', '45000')),
+            viewport_width=int(os.getenv('VIEWPORT_WIDTH', '1280')),
+            viewport_height=int(os.getenv('VIEWPORT_HEIGHT', '720')),
             log_level=os.getenv('LOG_LEVEL', 'INFO')
         )
         

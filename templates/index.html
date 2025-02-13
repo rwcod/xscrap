@@ -8,6 +8,9 @@
         <!-- Quick Actions -->
         <div class="mb-4">
             <a href="{{ url_for('databases') }}" class="btn btn-primary">Manage Game Databases</a>
+            <form action="{{ url_for('scrape_all') }}" method="post" class="d-inline-block">
+                <button type="submit" class="btn btn-success">Scrape All</button>
+            </form>
         </div>
 
         <!-- Database Overview -->

@@ -3,8 +3,6 @@ import asyncio
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 import json
 import logging
-import tkinter as tk
-from tkinter import ttk, messagebox
 from .config import Config
 
 class BrowserAuth:
@@ -142,5 +140,3 @@ class BrowserAuth:
         except Exception as e:
             self.logger.error(f"Cookie check failed: {str(e)}")
             return False
-
-print("Tkinter version:", tk.TkVersion)  # Should be >=8.6
